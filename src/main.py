@@ -149,7 +149,7 @@ dice_metric = DiceMetric(include_background=False, reduction="mean")
 
 # ====== OPTIMIZER ======
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 max_epochs = 200
 
 # ====== TRAINING ======
