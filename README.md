@@ -6,15 +6,14 @@ This repository contains the mini project for the TDT4265 course, focusing on th
 
 - **`src/`**: Contains the source code for the project.
 - **`data/`**: Includes datasets used for training and evaluation.
-- **`notebooks/`**: Jupyter notebooks for exploratory data analysis and experiments.
-- **`results/`**: Stores the results and model outputs.
+- **`results_UNet_v1/`**: Stores the results and model outputs.
 - **`README.md`**: Overview of the project and instructions.
 
 ## Getting Started
 
 1. Clone the repository:
     ```bash
-    git clone https://github.com/your-username/HNTS-MRG.git
+    git clone git@github.com:ValentinTournier/HNTS-MRG.git
     cd HNTS-MRG
     ```
 2. Create a venv:
@@ -32,11 +31,26 @@ This repository contains the mini project for the TDT4265 course, focusing on th
     pip install -r requirements.txt
     ```
 
-4. Run the project:
+4. Train the model:
     ```bash
-    python src/main.py
+    .venv/bin/pyhtin src/train.py
     ```
+
+5. Test the model and create visualisation:
+    ```bash
+    .venv/bin/pyhtin src/test.py
+    ```
+
+6. Generate loss plot:
+    ```bash
+    .venv/bin/pyhtin src/create_plot.py
+    ```
+
+## Report
+
+Below, the project presentation :
+[![Project Presentation](video_img.jpg)](https://youtu.be/D7G8Os90p9U)
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project follows the license of the used libraries.

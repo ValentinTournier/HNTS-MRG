@@ -1,11 +1,10 @@
 import matplotlib.pyplot as plt
 import os
 
-save_dir = os.path.expanduser("~/HNTS-MRG/results")
-os.makedirs(save_dir, exist_ok=True)
+save_dir = os.path.expanduser("~/HNTS-MRG/results_UNet_v1")
 
 # Lire le fichier texte
-with open(os.path.join(save_dir,"losses2.txt"), "r") as f:
+with open(os.path.join(save_dir,"losses.txt"), "r") as f:
     log_lines = f.readlines()
 
 # Extraire les données

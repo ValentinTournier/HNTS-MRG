@@ -4,7 +4,7 @@
 
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
-#SBATCH --constraint="a100|h100"
+#SBATCH --constraint="h100"
 #SBATCH --nodes=1             # 1 compute nodes
 #SBATCH --mem=16G              
 

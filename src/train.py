@@ -4,23 +4,20 @@ import torch
 import tqdm
 from sklearn.model_selection import train_test_split
 import numpy as np
-import matplotlib.pyplot as plt
 
 from monai.data import DataLoader, CacheDataset
 from monai.networks.nets import UNet
 from monai.inferers import sliding_window_inference
 from monai.utils import set_determinism
 from monai.losses import DiceLoss, DiceCELoss
-from monai.metrics import DiceMetric, ConfusionMatrixMetric
 from monai.inferers import sliding_window_inference
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, Spacingd, Orientationd,
     ScaleIntensityd, SpatialPadd, RandCropByPosNegLabeld,
     RandFlipd, RandRotate90d, RandAffined, RandBiasFieldd,
     RandGaussianNoised, RandAdjustContrastd,
-    ToTensord, EnsureTyped, AsDiscreted
+    ToTensord, EnsureTyped
 )
-from monai.networks.utils import one_hot
 from utils import get_data_list
 
 # ===== SETTINGS =====
@@ -36,6 +33,7 @@ if torch.cuda.is_available():
     device = torch.device("cuda")
 else:
     print("CUDA is not available. Using CPU.")
+    # error 
     device = torch.device("cpu")
 
 # ===== VARIABLES =====
@@ -61,17 +59,17 @@ batch_size = 2
 
 # Define the training and testing sizes
 # These are the proportions of the data to be used for training and testing
-train_size = 0.1
-test_size = 0.05
+train_size = 0.9
+test_size = 0.1
 
 # Define the region of interest size for sliding window inference
 # This is the size of the patches that will be extracted from the input images during inference
-roi_size = (96, 96, 64)
+roi_size = (192, 192, 96)
 
 # ----- OPTIMIZER -----
 
 # Define the maximum number of epochs for training
-max_epochs = 3
+max_epochs = 300
 
 # Define the learning rate for the optimizer
 learning_rate = 1e-3
@@ -89,8 +87,9 @@ model = UNet(
     out_channels=3,
     channels=(32, 64, 128, 256, 512),
     strides=(2, 2, 2, 2),
-    num_res_units=6,
-    dropout=0.3,
+    num_res_units=2,
+    kernel_size=3,
+    dropout=0.4,
     act="LeakyReLU",
 ).to(device)
 
@@ -101,16 +100,21 @@ model = UNet(
 
 # Dice + CrossEntropy Loss
 # This is a good choice if you have a multi-class segmentation problem and want to balance the contribution of each class.
-loss_function = DiceCELoss(to_onehot_y=True, softmax=True, include_background=False)
-# loss_function = DiceCELoss(include_background=False)
+loss_function = DiceCELoss(
+    to_onehot_y=True,  # Transform the labels to one-hot encoding
+    softmax=True,      # Apply softmax to the output
+    include_background=False,  # Exclude background class from the loss calculation
+    weight=torch.tensor([0.2, 1.0, 1.4]).to(device)  # Background, GTVp and GTVn
+)
+
+metric_function = DiceLoss(
+    to_onehot_y=True,
+    softmax=True,
+    include_background=False
+)
 
 # Adjust alpha (false negative penalty) and beta (false positive penalty) based on your task. This is particularly good if your tumor is very small in volume.
 # loss_function = TverskyLoss(to_onehot_y=True, softmax=True, alpha=0.7, beta=0.3)
-
-# ====== METRICS ======
-# For validation
-# dice_metric = DiceMetric(include_background=False, reduction="mean", get_not_nans=True, to_onehot_y=True, softmax=True)
-dice_metric = DiceMetric(include_background=True, reduction="mean")
 
 # ===== TRANSFORMATIONS ======
 train_transforms = Compose([
@@ -118,18 +122,22 @@ train_transforms = Compose([
     EnsureChannelFirstd(keys=["image", "label"]),
     Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
     Orientationd(keys=["image", "label"], axcodes="RAS"),
+    SpatialPadd(keys=["image", "label"], spatial_size=roi_size, mode="minimum"),
     ScaleIntensityd(keys=["image"]),
-    SpatialPadd(keys=["image", "label"], spatial_size=roi_size),
 
     # Crop positive and negative patches
     RandCropByPosNegLabeld(
         keys=["image", "label"], label_key="label",
-        spatial_size=roi_size, pos=1, neg=1, num_samples=4,
+        spatial_size=roi_size, pos=2, neg=1, num_samples=4, 
+        # pos=2, neg=1 makes the model focus more on the positive class
         image_key="image", image_threshold=0
     ),
 
     # Spatial augmentations
     RandFlipd(keys=["image", "label"], spatial_axis=0, prob=0.5),
+    RandFlipd(keys=["image", "label"], spatial_axis=1, prob=0.5),
+    RandFlipd(keys=["image", "label"], spatial_axis=2, prob=0.5),
+    
     RandRotate90d(keys=["image", "label"], prob=0.5, max_k=3),
     RandAffined(
         keys=["image", "label"],
@@ -142,9 +150,9 @@ train_transforms = Compose([
     ),
 
     # Intensity augmentations
-    RandBiasFieldd(keys=["image"], prob=0.3),
-    RandGaussianNoised(keys=["image"], prob=0.2, mean=0.0, std=0.1),
-    RandAdjustContrastd(keys=["image"], prob=0.3, gamma=(0.7, 1.5)),
+    RandBiasFieldd(keys=["image"], prob=0.5),
+    RandGaussianNoised(keys=["image"], prob=0.5, mean=0.0, std=0.1),
+    RandAdjustContrastd(keys=["image"], prob=0.5, gamma=(0.5, 1.5)),
 
     ToTensord(keys=["image", "label"]),
 ])
@@ -155,6 +163,7 @@ val_transforms = [
     Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
     Orientationd(keys=["image", "label"], axcodes="RAS"),
     ScaleIntensityd(keys=["image"]),
+    SpatialPadd(keys=["image", "label"], spatial_size=roi_size, mode="minimum"),
     EnsureTyped(keys=["image", "label"]),
 ]
 
@@ -231,8 +240,8 @@ for epoch in range(max_epochs):
                 overlap=0.5
             )
 
-            val_loss += loss_function(val_outputs, val_labels).item()
-
+            val_loss += metric_function(val_outputs, val_labels).item()
+            
         val_loss /= len(val_loader)
 
     print(f"Validation loss: {val_loss:.4f}")
