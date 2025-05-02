@@ -5,8 +5,9 @@ This repository contains the mini project for the TDT4265 course, focusing on th
 ## Project Structure
 
 - **`src/`**: Contains the source code for the project.
-- **`data/`**: Includes datasets used for training and evaluation.
-- **`results_UNet_v1/`**: Stores the results and model outputs.
+    - **`train.py`**: Code for training the UNet model
+    - **`test.py`**: Code for testing the model and creating the visual images and gif
+- **`results_UNet_v1.zip`**: Stores the results and model outputs.
 - **`README.md`**: Overview of the project and instructions.
 
 ## Getting Started
@@ -49,7 +50,7 @@ This repository contains the mini project for the TDT4265 course, focusing on th
 ## Report
 
 Below, the project presentation :
-[![Project Presentation](video_img.jpg)](https://youtu.be/D7G8Os90p9U)
+[![Project Presentation](video_image.png)](https://youtu.be/D7G8Os90p9U)
 
 ## License
 

@@ -1,10 +1,22 @@
+# ========== IMPORTS ==========
 import matplotlib.pyplot as plt
 import os
 
+
+# ========== PATHS ==========
+
 save_dir = os.path.expanduser("~/HNTS-MRG/results_UNet_v1")
 
+# Save losses for plotting
+losses_file = os.path.join(save_dir, "losses.txt")
+
+plot_name = "losses_plot.png"
+
+
+# ========== PLOTTING ==========
+
 # Lire le fichier texte
-with open(os.path.join(save_dir,"losses.txt"), "r") as f:
+with open(losses_file, "r") as f:
     log_lines = f.readlines()
 
 # Extraire les données
@@ -36,5 +48,5 @@ plt.grid(True)
 plt.tight_layout()
 
 # Sauvegarder l'image
-plt.savefig(os.path.join(save_dir,"loss_plot2.png"))
-print("✅ Le graphique a été sauvegardé dans 'loss_plot2.png'")
+plt.savefig(os.path.join(save_dir,plot_name))
+print("The plot has been saved in the results directory.")

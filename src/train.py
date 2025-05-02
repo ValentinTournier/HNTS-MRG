@@ -1,4 +1,5 @@
 # ===== IMPORT LIBRARIES =====
+
 import os
 import torch
 import tqdm
@@ -20,7 +21,9 @@ from monai.transforms import (
 )
 from utils import get_data_list
 
-# ===== SETTINGS =====
+
+# ========== SETTINGS ==========
+
 # Defining the seed for reproducibility
 set_determinism(seed=42)
 # Set the random seed for NumPy and PyTorch
@@ -36,11 +39,12 @@ else:
     # error 
     device = torch.device("cpu")
 
-# ===== VARIABLES =====
-# ----- PATHS -----
-# Directories for training and testing data
+
+# ========== VARIABLES ==========
+
+# ---------- PATHS ----------
+# Directories for training data
 train_data_dir = "/cluster/projects/vc/data/mic/open/HNTS-MRG/train"
-test_data_dir = "/cluster/projects/vc/data/mic/open/HNTS-MRG/test"
 
 # Ensure the directory exists before saving the model
 save_dir = os.path.expanduser("~/HNTS-MRG/results_UNet_v1")
@@ -53,7 +57,7 @@ os.makedirs(save_dir_models, exist_ok=True)
 # Save losses for plotting
 losses_file = os.path.join(save_dir, "losses.txt")
 
-# ----- HYPERPARAMETERS -----
+# ---------- HYPERPARAMETERS ----------
 # Define the batch size
 batch_size = 2
 
@@ -66,7 +70,7 @@ test_size = 0.1
 # This is the size of the patches that will be extracted from the input images during inference
 roi_size = (192, 192, 96)
 
-# ----- OPTIMIZER -----
+# ---------- OPTIMIZER ----------
 
 # Define the maximum number of epochs for training
 max_epochs = 300
@@ -78,7 +82,8 @@ learning_rate = 1e-3
 step_size = 100
 gamma = 0.1
 
-# ====== MODEL ======
+
+# ========== MODEL ==========
 
 # Define the model
 model = UNet(
@@ -93,7 +98,9 @@ model = UNet(
     act="LeakyReLU",
 ).to(device)
 
-# ====== LOSS ======
+
+# ========== LOSS ==========
+
 # classic one
 # loss_function = DiceLoss(to_onehot_y=True, softmax=True, include_background=False)
 # loss_function = DiceLoss()
@@ -116,7 +123,9 @@ metric_function = DiceLoss(
 # Adjust alpha (false negative penalty) and beta (false positive penalty) based on your task. This is particularly good if your tumor is very small in volume.
 # loss_function = TverskyLoss(to_onehot_y=True, softmax=True, alpha=0.7, beta=0.3)
 
-# ===== TRANSFORMATIONS ======
+
+# ========== TRANSFORMATIONS ==========
+
 train_transforms = Compose([
     LoadImaged(keys=["image", "label"]),
     EnsureChannelFirstd(keys=["image", "label"]),
@@ -157,6 +166,7 @@ train_transforms = Compose([
     ToTensord(keys=["image", "label"]),
 ])
 
+# Validation transforms
 val_transforms = [
     LoadImaged(keys=["image", "label"]),
     EnsureChannelFirstd(keys=["image", "label"]),
@@ -167,8 +177,11 @@ val_transforms = [
     EnsureTyped(keys=["image", "label"]),
 ]
 
-# ======= ALL SETTINGS DONE =======
-# ======= CREATING DICTS =======
+
+# ========== ALL SETTINGS DONE ==========
+
+
+# ========== CREATING DICTS ==========
 
 print("Creating dicts")
 # Obtain the complete training data
@@ -177,10 +190,7 @@ train_data_full = get_data_list(train_data_dir)
 # Divide the training data into train and validation sets
 train_data, val_data = train_test_split(train_data_full, train_size=train_size, test_size=test_size)
 
-# Obtenir les données de test
-test_data = get_data_list(test_data_dir)
-
-# ======= TRANSFORMING TRAINING DATAS =======
+# ========== TRANSFORMING TRAINING DATAS ==========
 
 print("Transforming training datas")
 
@@ -191,11 +201,15 @@ train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 val_ds = CacheDataset(data=val_data, transform=val_transforms, cache_rate=1.0)
 val_loader = DataLoader(val_ds, batch_size=1)
 
-# ===== DEFINE THE OPTIMIZER AND SCHEDULER ======
+
+# ========== DEFINE THE OPTIMIZER AND SCHEDULER ==========
+
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
-# ====== TRAINING ======
+
+# ========== TRAINING ==========
+
 print("Training")
 # Training loop
 
@@ -246,7 +260,7 @@ for epoch in range(max_epochs):
 
     print(f"Validation loss: {val_loss:.4f}")
 
-    # ===== SAVING =====
+    # ----------- SAVING ----------
     if val_loss < best_loss:
         best_loss = val_loss
         # Save the model if validation loss improves
