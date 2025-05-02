@@ -217,11 +217,11 @@ for epoch in range(max_epochs):
     if val_loss < best_loss:
         best_loss = val_loss
         # Save the model if validation loss improves
-        torch.save(model, os.path.join(save_dir, "best_model.pth"))
+        torch.save(model, os.path.join(save_dir, f"best_model{epoch+1}.pth"))
 
     
     # Save losses for plotting
-    losses_file = os.path.join(save_dir, "losses.txt")
+    losses_file = os.path.join(save_dir, "losses2.txt")
     with open(losses_file, "a") as f:
         f.write(f"Epoch {epoch+1}, Train Loss: {epoch_loss / len(train_loader):.4f}, Validation Loss: {val_loss:.4f}\n")
 
