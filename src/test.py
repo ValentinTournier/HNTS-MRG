@@ -88,7 +88,7 @@ test_ds = CacheDataset(data=test_data, transform=test_transforms, cache_rate=1.0
 test_loader = DataLoader(test_ds, batch_size=1)
 
 # ====== LOADING MODEL ======
-model_name = "best_model_old.pth"
+model_name = "best_model30.pth"
 model_path = os.path.join(save_dir, model_name)
 model = torch.load(model_path, weights_only=False)
 model.eval()

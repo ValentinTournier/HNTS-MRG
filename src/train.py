@@ -21,62 +21,110 @@ from monai.transforms import (
     ToTensord, EnsureTyped, AsDiscreted
 )
 from monai.networks.utils import one_hot
+from utils import get_data_list
 
-# ======= CREATING DICTS =======
-def get_data_list(root_dir):
-    data_dicts = []
-    for patient_id in os.listdir(root_dir):
-        patient_path = os.path.join(root_dir, patient_id, "preRT")
-        if not os.path.isdir(patient_path):
-            print(f"⚠️ Le répertoire {patient_path} n'existe pas ou n'est pas un répertoire.")
-            continue
-        # Trouver fichiers T2 et masque
-        t2_files = os.path.join(patient_path, f"{patient_id}_preRT_T2.nii.gz")
-        mask_files = os.path.join(patient_path, f"{patient_id}_preRT_mask.nii.gz")
+# ===== SETTINGS =====
+# Defining the seed for reproducibility
+set_determinism(seed=42)
+# Set the random seed for NumPy and PyTorch
+np.random.seed(42)
+torch.manual_seed(42)
 
-        if t2_files and mask_files:
-            data_dicts.append({
-                "image": t2_files,
-                "label": mask_files
-            })
-        else:
-            print(f"⚠️ Fichiers manquants pour le patient {patient_id}")
-    return data_dicts
+# Check if CUDA is available and set the device accordingly
+if torch.cuda.is_available():
+    print("CUDA is available. Using GPU.")
+    device = torch.device("cuda")
+else:
+    print("CUDA is not available. Using CPU.")
+    device = torch.device("cpu")
 
-# Construction des jeux d'entraînement et de validation
+# ===== VARIABLES =====
+# ----- PATHS -----
+# Directories for training and testing data
 train_data_dir = "/cluster/projects/vc/data/mic/open/HNTS-MRG/train"
 test_data_dir = "/cluster/projects/vc/data/mic/open/HNTS-MRG/test"
 
-print("Creating dicts")
-# Obtenir les données d'entraînement complètes
-train_data_full = get_data_list(train_data_dir)
-
-# Diviser les données d'entraînement en train et validation
-train_data, val_data = train_test_split(train_data_full, train_size=0.9, test_size=0.1)
-
-# Obtenir les données de test
-test_data = get_data_list(test_data_dir)
-
 # Ensure the directory exists before saving the model
-save_dir = os.path.expanduser("~/HNTS-MRG/results")
+save_dir = os.path.expanduser("~/HNTS-MRG/results_UNet_v1")
 os.makedirs(save_dir, exist_ok=True)
 
-# ======= TRANSFORMING TRAINING DATAS =======
+# Save the model
+save_dir_models = os.path.join(save_dir, "models")
+os.makedirs(save_dir_models, exist_ok=True)
 
-print("Transforming training datas")
-# Transforms
+# Save losses for plotting
+losses_file = os.path.join(save_dir, "losses.txt")
+
+# ----- HYPERPARAMETERS -----
+# Define the batch size
+batch_size = 2
+
+# Define the training and testing sizes
+# These are the proportions of the data to be used for training and testing
+train_size = 0.1
+test_size = 0.05
+
+# Define the region of interest size for sliding window inference
+# This is the size of the patches that will be extracted from the input images during inference
+roi_size = (96, 96, 64)
+
+# ----- OPTIMIZER -----
+
+# Define the maximum number of epochs for training
+max_epochs = 3
+
+# Define the learning rate for the optimizer
+learning_rate = 1e-3
+
+# Define the step size and gamma for the learning rate scheduler
+step_size = 100
+gamma = 0.1
+
+# ====== MODEL ======
+
+# Define the model
+model = UNet(
+    spatial_dims=3,
+    in_channels=1,
+    out_channels=3,
+    channels=(32, 64, 128, 256, 512),
+    strides=(2, 2, 2, 2),
+    num_res_units=6,
+    dropout=0.3,
+    act="LeakyReLU",
+).to(device)
+
+# ====== LOSS ======
+# classic one
+# loss_function = DiceLoss(to_onehot_y=True, softmax=True, include_background=False)
+# loss_function = DiceLoss()
+
+# Dice + CrossEntropy Loss
+# This is a good choice if you have a multi-class segmentation problem and want to balance the contribution of each class.
+loss_function = DiceCELoss(to_onehot_y=True, softmax=True, include_background=False)
+# loss_function = DiceCELoss(include_background=False)
+
+# Adjust alpha (false negative penalty) and beta (false positive penalty) based on your task. This is particularly good if your tumor is very small in volume.
+# loss_function = TverskyLoss(to_onehot_y=True, softmax=True, alpha=0.7, beta=0.3)
+
+# ====== METRICS ======
+# For validation
+# dice_metric = DiceMetric(include_background=False, reduction="mean", get_not_nans=True, to_onehot_y=True, softmax=True)
+dice_metric = DiceMetric(include_background=True, reduction="mean")
+
+# ===== TRANSFORMATIONS ======
 train_transforms = Compose([
     LoadImaged(keys=["image", "label"]),
     EnsureChannelFirstd(keys=["image", "label"]),
     Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
     Orientationd(keys=["image", "label"], axcodes="RAS"),
     ScaleIntensityd(keys=["image"]),
-    SpatialPadd(keys=["image", "label"], spatial_size=(96, 96, 96)),
+    SpatialPadd(keys=["image", "label"], spatial_size=roi_size),
 
     # Crop positive and negative patches
     RandCropByPosNegLabeld(
         keys=["image", "label"], label_key="label",
-        spatial_size=(96, 96, 96), pos=1, neg=1, num_samples=4,
+        spatial_size=roi_size, pos=1, neg=1, num_samples=4,
         image_key="image", image_threshold=0
     ),
 
@@ -110,57 +158,33 @@ val_transforms = [
     EnsureTyped(keys=["image", "label"]),
 ]
 
+# ======= ALL SETTINGS DONE =======
+# ======= CREATING DICTS =======
+
+print("Creating dicts")
+# Obtain the complete training data
+train_data_full = get_data_list(train_data_dir)
+
+# Divide the training data into train and validation sets
+train_data, val_data = train_test_split(train_data_full, train_size=train_size, test_size=test_size)
+
+# Obtenir les données de test
+test_data = get_data_list(test_data_dir)
+
+# ======= TRANSFORMING TRAINING DATAS =======
+
+print("Transforming training datas")
+
 # Datasets and Loaders
 train_ds = CacheDataset(data=train_data, transform=train_transforms, cache_rate=1.0)
-train_loader = DataLoader(train_ds, batch_size=2, shuffle=True)
+train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
 val_ds = CacheDataset(data=val_data, transform=val_transforms, cache_rate=1.0)
 val_loader = DataLoader(val_ds, batch_size=1)
 
-# ====== MODEL ======
-
-# Check if CUDA is available and set the device accordingly
-if torch.cuda.is_available():
-    print("CUDA is available. Using GPU.")
-    device = torch.device("cuda")
-else:
-    print("CUDA is not available. Using CPU.")
-    device = torch.device("cpu")
-
-# Define the model
-model = UNet(
-    spatial_dims=3,
-    in_channels=1,
-    out_channels=3,
-    channels=(32, 64, 128, 256, 512),
-    strides=(2, 2, 2, 2),
-    num_res_units=6,
-    dropout=0.3,
-    act="LeakyReLU",
-).to(device)
-
-# ====== LOSS ======
-# classic one
-# loss_function = DiceLoss(to_onehot_y=True, softmax=True, include_background=False)
-# loss_function = DiceLoss()
-
-# Dice + CrossEntropy Loss
-# This is a good choice if you have a multi-class segmentation problem and want to balance the contribution of each class.
-loss_function = DiceCELoss(to_onehot_y=True, softmax=True, include_background=False)
-# loss_function = DiceCELoss(include_background=False)
-
-# Adjust alpha (false negative penalty) and beta (false positive penalty) based on your task. This is particularly good if your tumor is very small in volume.
-# loss_function = TverskyLoss(to_onehot_y=True, softmax=True, alpha=0.7, beta=0.3)
-
-# ====== METRICS ======
-# For validation
-# dice_metric = DiceMetric(include_background=False, reduction="mean", get_not_nans=True, to_onehot_y=True, softmax=True)
-dice_metric = DiceMetric(include_background=True, reduction="mean")
-
-# ====== OPTIMIZER ======
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
-max_epochs = 400
+# ===== DEFINE THE OPTIMIZER AND SCHEDULER ======
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
 # ====== TRAINING ======
 print("Training")
@@ -201,7 +225,7 @@ for epoch in range(max_epochs):
 
             val_outputs = sliding_window_inference(
                 inputs=val_inputs,
-                roi_size=(96, 96, 96),  # même taille que celle utilisée pour l'entraînement
+                roi_size=roi_size,
                 sw_batch_size=1,
                 predictor=model,
                 overlap=0.5
@@ -217,14 +241,12 @@ for epoch in range(max_epochs):
     if val_loss < best_loss:
         best_loss = val_loss
         # Save the model if validation loss improves
-        torch.save(model, os.path.join(save_dir, f"best_model{epoch+1}.pth"))
-
+        torch.save(model, os.path.join(save_dir_models, f"best_model{epoch+1}.pth"))
     
-    # Save losses for plotting
-    losses_file = os.path.join(save_dir, "losses2.txt")
     with open(losses_file, "a") as f:
         f.write(f"Epoch {epoch+1}, Train Loss: {epoch_loss / len(train_loader):.4f}, Validation Loss: {val_loss:.4f}\n")
 
 # Save the final model
-torch.save(model, os.path.join(save_dir,"final_model.pth"))
+torch.save(model, os.path.join(save_dir_models,"final_model.pth"))
 print("Training completed.")
+
